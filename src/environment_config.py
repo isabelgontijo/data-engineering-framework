@@ -1,49 +1,52 @@
 from databricks.sdk.runtime import *
+import os
 from config.environments import ENVIRONMENTS
 
 
 class EnvironmentConfig:
     """
-    Automatically detects the current Databricks environment based on the cluster's Org ID,
-    loads the corresponding configuration, and builds ABFSS paths for data layers.
-    
-    Attributes:
-        environment (str): Environment name (e.g., 'dev', 'stg', 'prd')
-        catalog (str): Unity Catalog name for the environment
-        storage_account (str): Azure storage account name
-        paths (dict): Dictionary with keys 'bronze', 'silver', 'gold' and ABFSS paths as values
+    Detects the current environment based on the Git branch (vcs.branch)
+    and loads corresponding config settings and ABFSS paths.
 
-    Example:
-        >>> from src.config_loader.env_config import EnvironmentConfig
-        >>> env = EnvironmentConfig()
-        >>> print(env.environment)         # dev / stg / prd
-        >>> print(env.catalog)            # Unity Catalog name
-        >>> print(env.storage_account)    # Azure storage account
-        >>> print(env.paths["silver"])    # abfss://silver@<storage>.dfs.core.windows.net/
+    Attributes:
+        environment (str): dev, stg, prd
+        catalog (str): Unity Catalog name
+        storage_account (str): Azure storage account name
+        paths (dict): bronze/silver/gold ABFSS URIs
+
+    Example Usage:
+        env = EnvironmentConfig()
+        print(env.environment)  # 'dev'
+        print(env.paths["silver"])  # abfss://silver@<storage>.dfs.core.windows.net/
     """
 
     def __init__(self):
-        self.org_id = spark.conf.get("spark.databricks.clusterUsageTags.clusterOwnerOrgId")
-        self.config = self._load_environment_config(self.org_id)
+        self.branch = os.environ.get("vcs.branch", "").lower()
 
-        self.environment = self.config["env"]
+        if not self.branch:
+            raise RuntimeError("Git branch not detected. Make sure you're running from a Git folder.")
+
+        self.environment = self._map_branch_to_env(self.branch)
+        self.config = ENVIRONMENTS[self.environment]
+
         self.catalog = self.config["catalog"]
         self.storage_account = self.config["storage"]
-
         self.paths = self._build_paths()
 
-    def _load_environment_config(self, org_id: str) -> dict:
+    def _map_branch_to_env(self, branch: str) -> str:
         """
-        Loads environment-specific settings based on the Org ID.
+        Maps Git branch names to environments.
         """
-        if org_id not in ENVIRONMENTS:
-            raise ValueError(f"Unknown Org ID: {org_id}")
-        return ENVIRONMENTS[org_id]
+        if "develop" in branch:
+            return "dev"
+        elif "staging" in branch:
+            return "stg"
+        elif "main" in branch:
+            return "prd"
+        else:
+            raise ValueError(f"Unrecognized Git branch '{branch}' for environment mapping.")
 
     def _build_paths(self) -> dict:
-        """
-        Constructs ABFSS paths for medallion architecture data layers.
-        """
         base = self.storage_account
         return {
             "bronze": f"abfss://bronze@{base}.dfs.core.windows.net/",
