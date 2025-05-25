@@ -16,27 +16,27 @@ def extract_git_path_info() -> Dict[str, str]:
     Raises:
         ValueError: if the notebook path format is unexpected.
     """
-    from pyspark.dbutils import DBUtils
-    dbutils = DBUtils(spark)
+    path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+    parts = path.split("/")
 
-    full_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-    parts = full_path.strip("/").split("/")
-
-    # Expected pattern:
-    # /Workspace/Repos/<repo_folder>/<env_folder>/... or
-    # /Repos/<repo_folder>/<env_folder>/...
-    # Indexes:   0        1           2           3
-
+    # Exemplo: /Workspace/Repos/your-team/your-repo/dev/notebook-name
     try:
-        repo_folder = parts[2]
-        env_folder = parts[3]
-        user_folder = parts[4] if len(parts) > 4 else ""
-    except IndexError as e:
-        raise ValueError(f"Unexpected notebook path format: {full_path}") from e
+        repo_owner = parts[2]           # 'Repos'
+        team_folder = parts[3]          # 'your-team'
+        repo_folder = parts[4]          # 'your-repo'
+        env_folder = parts[5]           # 'dev', 'stg' ou 'prd'
+    except IndexError:
+        raise ValueError(f"Unexpected notebook path format: {path}")
+
+    repo_root_path = "/" + "/".join(parts[:6])  # até o env_folder, como base do repo
+    user = dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().get("user").getOrElse("unknown_user")
 
     return {
-        "full_path": full_path,
+        "full_path": path,
+        "repo_owner": repo_owner,
+        "team_folder": team_folder,
         "repo_folder": repo_folder,
         "env_folder": env_folder,
-        "user_folder": user_folder
+        "repo_root_path": repo_root_path,
+        "user": user
     }
