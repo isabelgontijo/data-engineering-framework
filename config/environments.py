@@ -1,17 +1,14 @@
 ENVIRONMENTS = {
-    'xxx': {
-        'env': 'dev',
-        'catalog': 'dev',
-        'storage': 'stodatalakedev'
+    "dev": {
+        "catalog": "dev",
+        "storage": "stodatalakedev"
     },
-    'yyy': {
-        'env': 'stg',
-        'catalog': 'stg',
-        'storage': 'stodatalakeuat'
+    "stg": {
+        "catalog": "stg",
+        "storage": "stodatalakeuat"
     },
-    'zzz': {
-        'env': 'prd',
-        'catalog': 'prd',
-        'storage': 'stodatalakeprd'
+    "prd": {
+        "catalog": "prd",
+        "storage": "stodatalakeprd"
     }
 }
