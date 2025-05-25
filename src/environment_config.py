@@ -1,5 +1,5 @@
-from databricks.sdk.runtime import dbutils
-from config.environments import ENVIRONMENTS
+ttinfrom databricks.sdk.runtime import dbutils
+from config.settings import ENVIRONMENTS
 
 
 class EnvironmentConfig:
