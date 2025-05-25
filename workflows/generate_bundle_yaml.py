@@ -1,49 +1,57 @@
-def extract_git_path_info() -> dict:
+import yaml
+from utils.extract_git_path_info import extract_git_path_info
+from config.settings import ENVIRONMENTS, DATABRICKS_HOST
+
+def generate_bundle_yaml(output_path="databricks_asset_bundle.yml"):
     """
-    Extracts useful information from the current notebook path in Databricks Repos,
-    such as the full path, team folder, repository name, environment folder (branch),
-    repository root path, and current workspace user.
+    Generates a Databricks asset bundle YAML configuration file based on the current
+    environment folder extracted from the notebook path.
 
-    The expected notebook path format is:
-    /Workspace/Repos/<team_folder>/<repo_folder>/<env_folder>/...
+    It reads environment-specific settings from the global ENVIRONMENTS dictionary
+    (which should include keys like 'service_principal' per environment) and
+    creates a bundle configuration with the appropriate workspace, mode, and service principal.
 
-    Example:
-    /Workspace/Repos/your-team/your-repo/dev/notebook-name
-
-    Returns:
-        dict: A dictionary with the following keys:
-            - full_path (str): The full notebook path
-            - repo_owner (str): Usually 'Repos'
-            - team_folder (str): The team folder inside Repos
-            - repo_folder (str): The repository name
-            - env_folder (str): The environment folder (e.g., dev, stg, prd)
-            - repo_root_path (str): Path up to the repository root including environment
-            - user (str): Current workspace user
+    Args:
+        output_path (str): Path where the generated YAML file will be saved. Defaults to "databricks_asset_bundle.yml".
 
     Raises:
-        ValueError: If the notebook path format is unexpected.
+        ValueError: If the environment folder extracted from the notebook path is not present in ENVIRONMENTS.
+
+    Side Effects:
+        Writes a YAML file to the specified output_path.
+        Prints a confirmation message with the environment used.
+
+    Example:
+        generate_bundle_yaml()
+        # Output: Bundle YAML generated at databricks_asset_bundle.yml for environment 'dev'
     """
-    path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-    user = dbutils.notebook.entry_point.getDbutils().notebook().getContext().tags().get("user").getOrElse("unknown_user")
+    info = extract_git_path_info()
+    env = info.get("env_folder")
 
-    parts = path.split("/")
+    if env not in ENVIRONMENTS:
+        raise ValueError(f"Unknown environment '{env}' from notebook path")
 
-    try:
-        repo_owner = parts[2]      # normalmente 'Repos'
-        team_folder = parts[3]     # ex: 'your-team'
-        repo_folder = parts[4]     # ex: 'your-repo'
-        env_folder = parts[5]      # ex: 'dev', 'stg', 'prd'
-    except IndexError:
-        raise ValueError(f"Unexpected notebook path format: {path}")
+    env_config = ENVIRONMENTS[env]
 
-    repo_root_path = "/" + "/".join(parts[:6])
-
-    return {
-        "full_path": path,
-        "repo_owner": repo_owner,
-        "team_folder": team_folder,
-        "repo_folder": repo_folder,
-        "env_folder": env_folder,
-        "repo_root_path": repo_root_path,
-        "user": user
+    bundle = {
+        "bundle": {"name": "databricks_asset_bundle"},
+        "include": ["../../workflows/jobs/*.yml"],
+        "targets": {
+            env: {
+                "mode": "production" if env != "dev" else "development",
+                "default": True,
+                "workspace": {
+                    "host": DATABRICKS_HOST,
+                    "root_path": f"/Workspace/Repos/{info.get('team_folder')}/{info.get('repo_folder')}/workflows/.bundle/${{bundle.name}}/${{bundle.target}}"
+                },
+                "run_as": {
+                    "service_principal_name": env_config["service_principal"]
+                }
+            }
+        }
     }
+
+    with open(output_path, "w") as f:
+        yaml.dump(bundle, f, sort_keys=False)
+
+    print(f"Bundle YAML generated at {output_path} for environment '{env}'")
