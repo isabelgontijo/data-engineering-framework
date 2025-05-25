@@ -44,8 +44,8 @@ class EnvironmentConfig:
         path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
         parts = path.split("/")
         try:
-            # Assumes standard layout: /Workspace/Repos/<user>/<repo>/<branch>/...
-            return parts[5]
+            # Assumes standard layout: /Workspace/Repos/<folder>/<env>/...
+            return parts[4]
         except IndexError:
             raise ValueError(f"Unexpected notebook path format: {path}")
 
