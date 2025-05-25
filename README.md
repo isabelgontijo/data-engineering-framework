@@ -1,6 +1,7 @@
 # Data Engineering Framework  
 
-A production-ready template for data teams implementing **medallion architecture** (bronze/silver/gold layers) with built-in utilities for data quality and governance.  
+A flexible, production-ready data engineering framework designed to accelerate analytics by implementing the **medallion architecture** (bronze/silver/gold), while embedding quality, governance, and reusability at its core.
+
 ✅ **Self-serve analytics** with clear data layers
 ✅ **Built-in history tracking** for all key data
 ✅ **One-click deployments** for your team
@@ -8,6 +9,16 @@ A production-ready template for data teams implementing **medallion architecture
 ```bash
 git clone https://github.com/your-repo/data-engineering-framework.git
 ```
+
+## Prerequisites
+
+To run this framework effectively, you need access to a Databricks environment.
+
+### Core Requirements
+- ✅ Databricks workspace (with Unity Catalog recommended)
+- ✅ Cluster with Delta Lake support (Databricks Runtime 11.3+ or similar)
+- ✅ Access to a Unity Catalog or Hive Metastore
+- ✅ Git integration configured (for code versioning)
 
 ## How the Data Flows
 ```mermaid
