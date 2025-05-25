@@ -1,52 +1,66 @@
-from databricks.sdk.runtime import *
-import os
+from databricks.sdk.runtime import dbutils
 from config.environments import ENVIRONMENTS
 
 
 class EnvironmentConfig:
     """
-    Detects the current environment based on the Git branch (vcs.branch)
-    and loads corresponding config settings and ABFSS paths.
+    Automatically detects the current Databricks environment based on the Git folder (branch)
+    and loads the corresponding configuration.
 
     Attributes:
-        environment (str): dev, stg, prd
-        catalog (str): Unity Catalog name
+        environment (str): Environment name (e.g., 'dev', 'stg', 'prd')
+        catalog (str): Unity Catalog name for the environment
         storage_account (str): Azure storage account name
-        paths (dict): bronze/silver/gold ABFSS URIs
+        paths (dict): Dictionary with keys 'bronze', 'silver', 'gold' and ABFSS paths as values
 
     Example Usage:
-        env = EnvironmentConfig()
-        print(env.environment)  # 'dev'
-        print(env.paths["silver"])  # abfss://silver@<storage>.dfs.core.windows.net/
+    from src.config_loader.env_config import EnvironmentConfig
+
+    env = EnvironmentConfig()
+    print(env.environment)         # dev / stg / prd
+    print(env.catalog)             # Unity Catalog name
+    print(env.paths["bronze"])     # abfss://bronze@<storage>.dfs.core.windows.net/
     """
 
     def __init__(self):
-        self.branch = os.environ.get("vcs.branch", "").lower()
+        self.branch = self._extract_git_folder_from_path()
+        print(f"[EnvironmentConfig] Detected Git branch: '{self.branch}'")
 
-        if not self.branch:
-            raise RuntimeError("Git branch not detected. Make sure you're running from a Git folder.")
+        self.config = self._load_environment_config(self.branch)
 
-        self.environment = self._map_branch_to_env(self.branch)
-        self.config = ENVIRONMENTS[self.environment]
-
+        self.environment = self.config["env"]
         self.catalog = self.config["catalog"]
         self.storage_account = self.config["storage"]
+
         self.paths = self._build_paths()
 
-    def _map_branch_to_env(self, branch: str) -> str:
+    def _extract_git_folder_from_path(self) -> str:
         """
-        Maps Git branch names to environments.
+        Extracts the Git folder name (branch) from the current notebook path.
+
+        Returns:
+            str: Git folder (branch) name
         """
-        if "develop" in branch:
-            return "dev"
-        elif "staging" in branch:
-            return "stg"
-        elif "main" in branch:
-            return "prd"
-        else:
-            raise ValueError(f"Unrecognized Git branch '{branch}' for environment mapping.")
+        path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+        parts = path.split("/")
+        try:
+            # Assumes standard layout: /Workspace/Repos/<user>/<repo>/<branch>/...
+            return parts[5]
+        except IndexError:
+            raise ValueError(f"Unexpected notebook path format: {path}")
+
+    def _load_environment_config(self, branch: str) -> dict:
+        """
+        Loads environment-specific settings based on the Git folder (branch).
+        """
+        if branch not in ENVIRONMENTS:
+            raise ValueError(f"Unknown Git branch or folder: '{branch}'")
+        return ENVIRONMENTS[branch]
 
     def _build_paths(self) -> dict:
+        """
+        Constructs ABFSS paths for medallion architecture data layers.
+        """
         base = self.storage_account
         return {
             "bronze": f"abfss://bronze@{base}.dfs.core.windows.net/",
