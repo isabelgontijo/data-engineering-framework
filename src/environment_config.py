@@ -12,6 +12,14 @@ class EnvironmentConfig:
         catalog (str): Unity Catalog name for the environment
         storage_account (str): Azure storage account name
         paths (dict): Dictionary with keys 'bronze', 'silver', 'gold' and ABFSS paths as values
+
+    Example:
+        >>> from src.config_loader.env_config import EnvironmentConfig
+        >>> env = EnvironmentConfig()
+        >>> print(env.environment)         # dev / stg / prd
+        >>> print(env.catalog)            # Unity Catalog name
+        >>> print(env.storage_account)    # Azure storage account
+        >>> print(env.paths["silver"])    # abfss://silver@<storage>.dfs.core.windows.net/
     """
 
     def __init__(self):
