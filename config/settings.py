@@ -1,8 +1,3 @@
-# config/settings.py
-
-DATABRICKS_HOST = "https://adb-workspace-id.azuredatabricks.net:443"
-WORKSPACE_ID = "workspace_id"
-
 ENVIRONMENTS = {
     "dev": {
         "catalog": "dev",
