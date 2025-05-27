@@ -1,6 +1,4 @@
-ttinfrom databricks.sdk.runtime import dbutils
 from config.settings import ENVIRONMENTS
-
 
 class EnvironmentConfig:
     """
@@ -33,21 +31,6 @@ class EnvironmentConfig:
         self.storage_account = self.config["storage"]
 
         self.paths = self._build_paths()
-
-    def _extract_git_folder_from_path(self) -> str:
-        """
-        Extracts the Git folder name (branch) from the current notebook path.
-
-        Returns:
-            str: Git folder (branch) name
-        """
-        path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-        parts = path.split("/")
-        try:
-            # Assumes standard layout: /Workspace/Repos/<folder>/<env>/...
-            return parts[4]
-        except IndexError:
-            raise ValueError(f"Unexpected notebook path format: {path}")
 
     def _load_environment_config(self, branch: str) -> dict:
         """
