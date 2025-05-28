@@ -1,6 +1,6 @@
 import re
 
-def get_notebook_context():
+def notebook_context():
     """
     Extract useful context information from Databricks notebook context,
     including parsed path components like environment folder, team folder, and repo folder.
