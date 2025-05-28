@@ -1,5 +1,5 @@
 from src.config import ENVIRONMENTS
-from src.notebook_context import get_notebook_context_info
+from src.notebook_context import notebook_context
 
 
 class EnvironmentConfig:
@@ -15,7 +15,7 @@ class EnvironmentConfig:
     """
 
     def __init__(self):
-        self.context_info = get_notebook_context_info()
+        self.context_info = notebook_context()
         self.env = self.context_info["env_folder"]
 
         print(f"[EnvironmentConfig] Detected environment from notebook path: '{self.env}'")
