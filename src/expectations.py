@@ -5,7 +5,7 @@ from typing import List, Dict, Optional, Any
 
 from src.custom_exception import CustomException
 from src.notebook_context import notebook_context
-from src.formatted_print import formatted_print
+from src.utils import formatted_print
 
 class Expectations:
     def __init__(
@@ -38,33 +38,24 @@ class Expectations:
         self.custom_sql_counter = 0
 
         formatted_print(
-            f"""
-            [Expectations/__init__] Classe iniciada!
-            Parâmetros:
-                - save_log: {self.save_log}
-                - debug: {self.debug}
-                - table_name: {self.table_name}
-                - table_log: {self.table_log}
-                - raise_exception: {self.raise_exception}
-                - quarantine: {self.quarantine}
-                - return_df: {self.return_df}
-                - env: {self.env}
-            """, 
+            f"""[Expectations/__init__] Class initialized! \nParameters: \n- save_log: {self.save_log} \n- debug: {self.debug} \n- table_name: {self.table_name} \n- table_log: {self.table_log} \n- raise_exception: {self.raise_exception} \n- quarantine: {self.quarantine} \n- return_df: {self.return_df} \n- env: {self.env}""", 
             debug=self.debug, 
             force_debug_only=True
         )
 
     def apply(self, rules: List[Dict[str, Any]]):
         if not isinstance(rules, list):
-            raise CustomException("[apply] 'rules' must be a list.")
+            raise CustomException("[Expectations/apply] 'rules' must be a list.")
 
         df = self.df
         metadata_list = []
         error_messages = []
 
-        formatted_print(f"[Expectations/apply] Regras recebidas: {'\n'.join([r['quality'] for r in rules])}", debug=self.debug, force_debug_only=True)
+        scenarios = [f"- {r['scenario']}" for r in rules]
+        formatted_print("[Expectations/apply] Received rules:\n" + "\n".join(scenarios), debug=self.debug, force_debug_only=True)
 
-        is_not_empty = next((r for r in rules if r.get("quality") == "is_not_empty"), None)
+        # Check if DataFrame is not empty
+        is_not_empty = next((r for r in rules if r.get("scenario") == "is_not_empty"), None)
         if is_not_empty:
             criticality = is_not_empty.get("criticality", "error")
             df = self._check_dataframe_is_not_empty(df)
@@ -75,64 +66,67 @@ class Expectations:
             if not success:
                 if self.save_log:
                     self._log(metadata_list)
-                msg = "[Expectations/apply] DataFrame está vazio."
-                formatted_print(msg, debug=self.debug)
+                formatted_print("[Expectations/apply] DataFrame is empty", debug=self.debug)
                 if criticality == "error":
                     raise CustomException("Empty DataFrame detected.")
                 else:
                     return
 
+        # Apply other rules
         for rule in rules:
-            quality = rule.get("quality")
-            if not quality or quality == "is_not_empty":
+            scenario = rule.get("scenario")
+            if not scenario or scenario == "is_not_empty":
                 continue
 
             criticality = rule.get("criticality", "error")
-            params = {k: v for k, v in rule.items() if k not in ("quality", "criticality")}
+            params = {k: v for k, v in rule.items() if k not in ("scenario", "criticality")}
 
-            formatted_print(f"[Expectations/apply] Aplicando regra '{quality}'", debug=self.debug, force_debug_only=True)
+            formatted_print(f"[Expectations/apply] Applying rule: '{scenario}'", debug=self.debug, force_debug_only=True)
 
-            method = getattr(self, f"_check_{quality}", None)
+            method = getattr(self, f"_check_{scenario}", None)
             if method is None:
-                raise CustomException(f"Quality rule '{quality}' is not implemented.")
+                raise CustomException(f"[Expectations/apply] Rule '{scenario}' is not implemented.")
 
-            if quality == "custom_sql":
+            if scenario == "custom_sql":
                 df, col_name = method(df, **params)
                 rule["col_name"] = col_name
             else:
                 df = method(df, **params)
 
-            col_result = rule.get("col_name", quality)
+            col_result = rule.get("col_name", scenario)
             unexpected_count = df.filter(F.col(col_result) == "false").count()
             success = df.select(F.min(F.col(col_result))).first()[0] == "true"
 
-            metadata = self._build_metadata(quality, params, criticality, unexpected_count, success)
+            metadata = self._build_metadata(scenario, params, criticality, unexpected_count, success)
             metadata_list.append(metadata)
 
             fail_metadata = F.when(
                 F.col(col_result) == "false",
                 F.struct(
-                    F.lit(quality).alias("quality"),
+                    F.lit(scenario).alias("scenario"),
                     F.lit(criticality).alias("criticality"),
                     F.map([F.lit(k) for k in params for _ in (0, 1)][::2], [F.lit(str(v)) for v in params.values()])
                         .alias("parameters")
                 )
             )
+
             df = df.withColumn("_metadata", F.when(
                 F.col(col_result) == "false",
                 F.array_union(F.col("_metadata"), F.array(fail_metadata))
             ).otherwise(F.col("_metadata")))
 
+        # Save log if needed
         if self.save_log:
             self._log(metadata_list)
 
         for m in metadata_list:
             if m["success"] == "false" and m["criticality"] == "error":
-                msg = f"[Expectations/apply] Falha crítica: {m['quality']} (params={m['parameters']})"
+                msg = f"[Expectations/apply] Critical failure: {m['scenario']} (params={m['parameters']})"
                 error_messages.append(msg)
             elif m["success"] == "false" and m["criticality"] == "warn":
-                formatted_print(f"[Expectations/apply] Aviso: falha na regra '{m['quality']}'", debug=self.debug)
+                formatted_print(f"[Expectations/apply] Warning: rule '{m['scenario']}' failed", debug=self.debug)
 
+        # Return or raise error
         if self.return_df:
             if error_messages and self.raise_exception:
                 formatted_print("\n".join(error_messages), debug=self.debug)
@@ -178,7 +172,7 @@ class Expectations:
             df = df.withColumn(col_name, F.expr(expression).cast("string"))
             return df, col_name
         except Exception as e:
-            raise CustomException(f"Invalid SQL expression: {e}")
+            raise CustomException(f"[Expectations/_check_custom_sql] Invalid SQL expression: {e}")
 
     def _send_to_quarantine(self, quarantine_df: DataFrame):
         if not self.table_name:
@@ -189,13 +183,13 @@ class Expectations:
 
             df_to_write = quarantine_df.withColumn("_quarantined_at", F.current_timestamp())
             df_to_write.write.mode("append").format("delta").saveAsTable(full_table_name)
-            formatted_print(f"[Expectations/_send_to_quarantine] 🚨 Linhas enviadas para {full_table_name}", debug=self.debug)
+            formatted_print(f"[Expectations/_send_to_quarantine] Rows written to quarantine table: {full_table_name}", debug=self.debug)
         except Exception as e:
-            raise CustomException(f"[Expectations/_send_to_quarantine] Failed to write quarantine: {e}")
+            raise CustomException(f"[Expectations/_send_to_quarantine] Failed to write to quarantine: {e}")
 
-    def _build_metadata(self, quality_name: str, parameters: Dict[str, Any], criticality: str, unexpected_values: Any, success: bool) -> Dict[str, Any]:
+    def _build_metadata(self, scenario: str, parameters: Dict[str, Any], criticality: str, unexpected_values: Any, success: bool) -> Dict[str, Any]:
         return {
-            "quality": quality_name,
+            "scenario": scenario,
             "unexpectedValues": str(unexpected_values),
             "success": str(success).lower(),
             "parameters": {str(k): str(v) for k, v in parameters.items()},
@@ -207,7 +201,7 @@ class Expectations:
             raise CustomException("[Expectations/_log] 'metadata_list' must be a list.")
         try:
             metadata_schema = T.StructType([
-                T.StructField("quality", T.StringType()),
+                T.StructField("scenario", T.StringType()),
                 T.StructField("unexpectedValues", T.StringType()),
                 T.StructField("success", T.StringType()),
                 T.StructField("parameters", T.MapType(T.StringType(), T.StringType())),
@@ -218,7 +212,7 @@ class Expectations:
                 T.StructField("table", T.StringType()),
                 T.StructField("metadata", T.ArrayType(metadata_schema)),
                 T.StructField("environment", T.StringType()),
-                T.StructField("_createdAt", T.TimestampType())
+                T.StructField("_created_at", T.TimestampType())
             ])
 
             data = [(self.table_name, metadata_list, self.env, None)]
@@ -226,6 +220,6 @@ class Expectations:
             df_log = df_log.withColumn("_createdAt", F.current_timestamp())
             df_log.write.mode("append").format("delta").saveAsTable(self.table_log)
 
-            formatted_print(f"[Expectations/_log] Log salvo em {self.table_log}", debug=self.debug)
+            formatted_print(f"[Expectations/_log] Log saved to: {self.table_log}", debug=self.debug)
         except Exception as e:
-            raise CustomException(f"[Expectations/_log] Failed to log quality metadata: {e}")
+            raise CustomException(f"[Expectations/_log] Failed to log metadata: {e}")
