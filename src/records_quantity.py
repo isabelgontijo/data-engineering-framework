@@ -1,7 +1,7 @@
 from pyspark.sql import functions as F
 from src.custom_exception import CustomException
 from src.notebook_context import notebook_context
-from src.formatted_print import formatted_print
+from src.utils import formatted_print
 
 
 class RecordsQuantity:
@@ -27,51 +27,59 @@ class RecordsQuantity:
 
         formatted_print(
             f"""
-            [RecordsQuantity/__init__] Classe iniciada!
-            Parâmetros:
+            [RecordsQuantity/__init__] Class initialized!
+            Parameters:
                 - table_name: {self.table_name}
                 - save_log: {self.save_log}
                 - table_log: {self.table_log}
                 - debug: {self.debug}
                 - env: {self.env}
-            """, 
-            debug=self.debug, 
+            """,
+            debug=self.debug,
             force_debug_only=True
         )
 
     def save(self):
         if not self.save_log:
-            formatted_print(f"[RecordsQuantity/save] Logging desativado para a tabela: {self.table_name}", debug=self.debug)
+            formatted_print(f"[RecordsQuantity/save] Logging is disabled for table: {self.table_name}", debug=self.debug)
             return
 
         try:
             history_df = spark.sql(f"DESCRIBE HISTORY {self.table_name} LIMIT 1") \
                 .select("timestamp", "operation", "version", "operationMetrics")
         except Exception as e:
-            raise CustomException(f"[RecordsQuantity/save] Falha ao ler histórico da tabela {self.table_name}: {e}")
+            raise CustomException(f"[RecordsQuantity/save] Failed to read history for table {self.table_name}: {e}")
 
-        op = history_df.select("operation").first()["operation"]
-        if op not in [
-            'WRITE', 'CREATE TABLE AS SELECT', 'REPLACE TABLE AS SELECT',
-            'COPY INTO', 'CREATE OR REPLACE TABLE AS SELECT', 'MERGE'
+        operation = history_df.select("operation").first()["operation"]
+        if operation not in [
+            "WRITE", "CREATE TABLE AS SELECT", "REPLACE TABLE AS SELECT",
+            "COPY INTO", "CREATE OR REPLACE TABLE AS SELECT", "MERGE"
         ]:
-            raise CustomException(f"[RecordsQuantity/save] Tipo de operação não suportada: {op}")
+            raise CustomException(f"[RecordsQuantity/save] Unsupported operation type: {operation}")
 
         metrics = history_df.select("operationMetrics").first()["operationMetrics"]
         num_output_rows = int(metrics.get("numOutputRows", 0))
 
+        # 👉 Print metrics in debug mode
+        formatted_print(
+            f"[RecordsQuantity/save] Operation metrics for table '{self.table_name}':\n{metrics}",
+            debug=self.debug,
+            force_debug_only=True
+        )
+
+        # Build log record
         data = {
             "table": self.table_name,
             "environment": self.env,
             "num_output_rows": num_output_rows,
-            "_createdAt": None  # será adicionado como current_timestamp
+            "_createdAt": None  # will be added below
         }
 
         df_log = spark.createDataFrame([data]) \
-            .withColumn("_createdAt", F.current_timestamp())
+            .withColumn("_created_at", F.current_timestamp())
 
         try:
             df_log.write.mode("append").format("delta").saveAsTable(self.table_log)
-            formatted_print(f"[RecordsQuantity/save] Log salvo em: {self.table_log}", debug=self.debug)
+            formatted_print(f"[RecordsQuantity/save] Log successfully written to: {self.table_log}", debug=self.debug)
         except Exception as e:
-            raise CustomException(f"[RecordsQuantity/save] Falha ao escrever log em {self.table_log}: {e}")
+            raise CustomException(f"[RecordsQuantity/save] Failed to write log to {self.table_log}: {e}")
